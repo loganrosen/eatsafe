@@ -6,14 +6,8 @@
     "directory": "./dist",
     "not_found_handling": "single-page-application"
   },
-  "routes": [
-    {
-      "pattern": "eatsafe.nyc/*",
-      "zone_name": "eatsafe.nyc"
-    },
-    {
-      "pattern": "www.eatsafe.nyc/*",
-      "zone_name": "eatsafe.nyc"
-    }
-  ]
+  // Routes for eatsafe.nyc are managed in loganrosen/cloudflare-infra (Terraform).
+  // Declaring them here makes wrangler replace them on every deploy, which churns their IDs.
+  "workers_dev": false,
+  "preview_urls": false
 }
