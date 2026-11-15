@@ -5,6 +5,7 @@ import {
   fetchCommunityBoards,
   fetchCuisines,
   fetchRecentRestaurants,
+  RECENT_CLOSURE_DAYS,
   searchRestaurants,
 } from "../api.js";
 
@@ -83,6 +84,13 @@ describe("fetchRecentRestaurants", () => {
     await fetchRecentRestaurants("closures");
     const where = capturedWhere(mock);
     expect(where).toContain("inspection_date >=");
+    const cutoff = where.match(/inspection_date >= '([^']+)'/)?.[1];
+    expect(cutoff).toBeDefined();
+    const ageInDays =
+      (Date.now() - new Date(cutoff as string).getTime()) /
+      (24 * 60 * 60 * 1000);
+    expect(ageInDays).toBeGreaterThanOrEqual(RECENT_CLOSURE_DAYS - 1);
+    expect(ageInDays).toBeLessThanOrEqual(RECENT_CLOSURE_DAYS + 1);
     expect(where).toContain("upper(action) like '%CLOSED%'");
     expect(capturedOrder(mock)).toBe("inspection_date DESC");
   });
@@ -291,6 +299,22 @@ describe("searchRestaurants — WHERE clause construction", () => {
     mockFetch([], false);
     await expect(searchRestaurants(EMPTY)).rejects.toThrow("HTTP 500");
   });
+
+  it("rejects an invalid zip code before fetching", async () => {
+    const mock = mockFetch([]);
+    await expect(searchRestaurants({ ...EMPTY, zip: "10'01" })).rejects.toThrow(
+      "Zip code must contain exactly 5 digits.",
+    );
+    expect(mock).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid coordinates before fetching", async () => {
+    const mock = mockFetch([]);
+    await expect(
+      searchRestaurants(EMPTY, { lat: 120, lng: -73.99, radius: 0.5 }),
+    ).rejects.toThrow("Location or search radius is invalid.");
+    expect(mock).not.toHaveBeenCalled();
+  });
 });
 
 describe("fetchByCamis", () => {
@@ -318,10 +342,12 @@ describe("fetchByCamis", () => {
     expect(result?.dba).toBe("TEST PLACE");
   });
 
-  it("escapes single quotes in camis", async () => {
+  it("rejects an invalid camis before fetching", async () => {
     const mock = mockFetch([]);
-    await fetchByCamis("it's weird");
-    expect(capturedWhere(mock)).toContain("it''s weird");
+    await expect(fetchByCamis("it's weird")).rejects.toThrow(
+      "Restaurant ID is invalid.",
+    );
+    expect(mock).not.toHaveBeenCalled();
   });
 
   it("returns null when no rows are returned", async () => {

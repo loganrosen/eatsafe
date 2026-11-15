@@ -181,9 +181,10 @@ export default function ResultsGrid({
             </button>
           )}
         </span>
-        {hitLimit && !recentFeed && (
+        {hitLimit && (
           <span className="text-amber-500">
-            ⚠ Result limit reached — refine your search
+            ⚠ Result limit reached —{" "}
+            {recentFeed ? "choose a borough" : "refine your search"}
           </span>
         )}
         <span className="ml-auto flex items-center gap-3">

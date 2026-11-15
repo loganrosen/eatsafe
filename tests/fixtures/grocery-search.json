@@ -1,0 +1,20 @@
+[
+  {
+    "county": "Kings",
+    "inspection_date": "2026-08-10T00:00:00.000",
+    "inspection_grade": "A",
+    "establishment_type": "A",
+    "owner_name": "Test Owner",
+    "trade_name": "KEY FOOD",
+    "street": "123 MAIN ST",
+    "city": "BROOKLYN",
+    "statecode": "NY",
+    "zipcode": "11201",
+    "deficiency_number": "06A",
+    "deficiency_description": "Refrigerated food above required temperature.",
+    "georeference": {
+      "type": "Point",
+      "coordinates": [-73.99, 40.69]
+    }
+  }
+]

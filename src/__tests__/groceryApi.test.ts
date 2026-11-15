@@ -481,6 +481,14 @@ describe("searchGroceries — WHERE clause construction", () => {
     mockFetch([], false);
     await expect(searchGroceries(EMPTY)).rejects.toThrow("HTTP 500");
   });
+
+  it("rejects an invalid zip code before fetching", async () => {
+    const mock = mockFetch([]);
+    await expect(searchGroceries({ ...EMPTY, zip: "1120" })).rejects.toThrow(
+      "Zip code must contain exactly 5 digits.",
+    );
+    expect(mock).not.toHaveBeenCalled();
+  });
 });
 
 describe("fetchGroceryById", () => {
@@ -514,7 +522,7 @@ describe("fetchGroceryById", () => {
 
   it("throws on non-OK HTTP response", async () => {
     mockFetch([], false);
-    const id = generateStoreId("X", "Y", "Z");
+    const id = generateStoreId("X", "Y", "10001");
     await expect(fetchGroceryById(id)).rejects.toThrow("HTTP 500");
   });
 
@@ -524,6 +532,14 @@ describe("fetchGroceryById", () => {
     await fetchGroceryById(id);
     const where = capturedWhere(mock);
     expect(where).toContain("''");
+  });
+
+  it("rejects a malformed store ID before fetching", async () => {
+    const mock = mockFetch([]);
+    await expect(fetchGroceryById("%%%")).rejects.toThrow(
+      "Store ID is invalid.",
+    );
+    expect(mock).not.toHaveBeenCalled();
   });
 });
 
