@@ -29,7 +29,7 @@ npm install
 npm run dev
 ```
 
-`npm run dev` serves only the front end. To run the alerts API and cron locally, put a VAPID private key in `.dev.vars` (`VAPID_PRIVATE_JWK=...`, generate one with `npx @pushforge/builder vapid`), then:
+`npm run dev` serves only the front end. To run the alerts API and cron locally, generate a key pair with `npx @pushforge/builder vapid` and put both halves in `.dev.vars` (`VAPID_PUBLIC_KEY=...` and `VAPID_PRIVATE_JWK=...`; the public key in `wrangler.jsonc` is production's and won't match a local private key), then:
 
 ```bash
 npx wrangler d1 migrations apply eatsafe --local
