@@ -18,7 +18,7 @@
       "binding": "DB",
       // Created by cloudflare-infra (cloudflare_d1_database.eatsafe).
       "database_name": "eatsafe",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "1102a7b8-350c-4127-bcc0-13e29482b1ee",
       "migrations_dir": "migrations"
     }
   ],
@@ -33,7 +33,7 @@
     "crons": ["*/10 * * * *"]
   },
   "vars": {
-    "VAPID_PUBLIC_KEY": "REPLACE_WITH_VAPID_PUBLIC_KEY",
+    "VAPID_PUBLIC_KEY": "BCh-yniMHAhOz5eS8wh8YUp1GHR21G8VNjXBtTdi1RrQYsGqotvtg1rvaXfNJJtws1IUzcJFm4dg7l-LiXPepEA",
     "VAPID_SUBJECT": "https://eatsafe.nyc"
   },
   // Set with `wrangler secret put VAPID_PRIVATE_JWK`.
