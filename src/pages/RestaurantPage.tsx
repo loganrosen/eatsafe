@@ -148,16 +148,23 @@ export default function RestaurantPage() {
       };
     }
     if (!camis) return;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetchByCamis(camis)
+    fetchByCamis(camis, controller.signal)
       .then((r) => {
+        if (controller.signal.aborted) return;
         setRestaurant(r);
         if (r) document.title = `${r.dba} — eatsafe`;
       })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (!controller.signal.aborted) setError((e as Error).message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
     return () => {
+      controller.abort();
       document.title = "eatsafe — NYC Restaurant Inspection Search";
     };
   }, [camis, passedRestaurant]);

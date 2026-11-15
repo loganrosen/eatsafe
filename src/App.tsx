@@ -6,6 +6,7 @@ import {
   fetchRecentRestaurants,
   type GeoParams,
   groupRows,
+  RECENT_CLOSURE_DAYS,
   type RecentRestaurantFeed,
   type Restaurant,
   type SearchParams,
@@ -100,12 +101,25 @@ function readParams(): {
   };
   const rawLat = p.get("lat");
   const rawLng = p.get("lng");
+  const lat = rawLat ? parseFloat(rawLat) : Number.NaN;
+  const lng = rawLng ? parseFloat(rawLng) : Number.NaN;
+  const radius = parseFloat(p.get("radius") ?? "0.25");
   const geo =
-    rawLat && rawLng
+    rawLat &&
+    rawLng &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Number.isFinite(radius) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180 &&
+    radius > 0 &&
+    radius <= 25
       ? {
-          lat: parseFloat(rawLat),
-          lng: parseFloat(rawLng),
-          radius: parseFloat(p.get("radius") ?? "0.25"),
+          lat,
+          lng,
+          radius,
         }
       : null;
   return {
@@ -235,6 +249,30 @@ export default function App() {
   const [nearbyRadius, setNearbyRadius] = useState(
     () => readParams().geo?.radius ?? 0.25,
   );
+  const activeRequestRef = useRef<AbortController | null>(null);
+  const requestSequenceRef = useRef(0);
+
+  const beginRequest = useCallback(() => {
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+    const sequence = ++requestSequenceRef.current;
+    return { controller, sequence };
+  }, []);
+
+  const requestIsCurrent = useCallback(
+    (controller: AbortController, sequence: number) =>
+      !controller.signal.aborted && requestSequenceRef.current === sequence,
+    [],
+  );
+
+  const cancelActiveRequest = useCallback(() => {
+    activeRequestRef.current?.abort();
+    activeRequestRef.current = null;
+    requestSequenceRef.current++;
+  }, []);
+
+  useEffect(() => () => activeRequestRef.current?.abort(), []);
 
   useEffect(() => {
     fetchCuisines().then(setCuisines);
@@ -250,6 +288,7 @@ export default function App() {
       includeReopened = false,
       isRestore = false,
     ) => {
+      const { controller, sequence } = beginRequest();
       setMode("restaurant");
       setRecentFeed(feed);
       setRecentBoro(boro);
@@ -275,30 +314,39 @@ export default function App() {
           150,
         );
       try {
-        const { rows, restaurants } = await fetchRecentRestaurants(feed, {
-          boro,
-          includeReopened,
-        });
+        const { rows, restaurants, hitLimit } = await fetchRecentRestaurants(
+          feed,
+          {
+            boro,
+            includeReopened,
+            signal: controller.signal,
+          },
+        );
+        if (!requestIsCurrent(controller, sequence)) return;
         setResult({
           status: "done",
           restaurants,
           groceries: [],
-          hitLimit: false,
+          hitLimit,
           totalRows: rows.length,
           error: null,
         });
       } catch (e) {
+        if (!requestIsCurrent(controller, sequence)) return;
         setResult({
           status: "error",
           restaurants: [],
           groceries: [],
           hitLimit: false,
           totalRows: 0,
-          error: (e as Error).message,
+          error:
+            e instanceof Error
+              ? e.message
+              : "The inspection search failed unexpectedly.",
         });
       }
     },
-    [clearGeo],
+    [beginRequest, clearGeo, requestIsCurrent],
   );
 
   const doSearch = useCallback(
@@ -310,10 +358,12 @@ export default function App() {
     ) => {
       setRecentFeed(null);
       if (!hasQuery(values, geo)) {
+        cancelActiveRequest();
         setResult(IDLE);
         writeParams(currentMode, values, geo);
         return;
       }
+      const { controller, sequence } = beginRequest();
       writeParams(currentMode, values, geo);
       setResult({
         status: "loading",
@@ -337,6 +387,7 @@ export default function App() {
           const { rows, geo: geoResult } = await searchGroceries(
             values as GrocerySearchParams,
             geo ?? undefined,
+            controller.signal,
           );
           let groceries = groupGroceryRows(rows).filter(
             (g) =>
@@ -359,6 +410,7 @@ export default function App() {
               }))
               .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
           }
+          if (!requestIsCurrent(controller, sequence)) return;
           setResult({
             status: "done",
             restaurants: [],
@@ -371,6 +423,7 @@ export default function App() {
           const { rows, geo: geoResult } = await searchRestaurants(
             values as SearchParams,
             geo ?? undefined,
+            controller.signal,
           );
           let restaurants = groupRows(rows).filter(
             (r) =>
@@ -393,6 +446,7 @@ export default function App() {
               }))
               .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
           }
+          if (!requestIsCurrent(controller, sequence)) return;
           setResult({
             status: "done",
             restaurants,
@@ -403,17 +457,21 @@ export default function App() {
           });
         }
       } catch (e) {
+        if (!requestIsCurrent(controller, sequence)) return;
         setResult({
           status: "error",
           restaurants: [],
           groceries: [],
           hitLimit: false,
           totalRows: 0,
-          error: (e as Error).message,
+          error:
+            e instanceof Error
+              ? e.message
+              : "The inspection search failed unexpectedly.",
         });
       }
     },
-    [],
+    [beginRequest, cancelActiveRequest, requestIsCurrent],
   );
 
   // Restore state from URL on mount
@@ -458,6 +516,7 @@ export default function App() {
   }, [doSearch, loadRecentFeed]);
 
   const handleClear = () => {
+    cancelActiveRequest();
     setRecentFeed(null);
     setRecentBoro([]);
     setRecentIncludeReopened(false);
@@ -484,6 +543,7 @@ export default function App() {
 
   const handleModeChange = (newMode: DatasetMode) => {
     if (newMode === mode && !recentFeed) return;
+    cancelActiveRequest();
     setMode(newMode);
     setRecentFeed(null);
     setRecentBoro([]);
@@ -662,8 +722,8 @@ export default function App() {
               </p>
               <p className="text-sm text-zinc-600 dark:text-zinc-300">
                 {recentIncludeReopened
-                  ? "Restaurants recently closed by the health department, including places that have since re-opened."
-                  : "Restaurants recently closed by the health department that have not yet been re-opened in the inspection data."}
+                  ? `Restaurants closed by the health department in the last ${RECENT_CLOSURE_DAYS} days, including places that have since re-opened.`
+                  : `Restaurants closed by the health department in the last ${RECENT_CLOSURE_DAYS} days that have not yet been re-opened in the inspection data.`}
               </p>
             </div>
             <div className="flex flex-col gap-3 max-[720px]:mt-4">

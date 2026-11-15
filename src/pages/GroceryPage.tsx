@@ -213,16 +213,23 @@ export default function GroceryPage() {
       };
     }
     if (!storeId) return;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetchGroceryById(storeId)
+    fetchGroceryById(storeId, controller.signal)
       .then((g) => {
+        if (controller.signal.aborted) return;
         setGrocery(g);
         if (g) document.title = `${g.tradeName} — eatsafe`;
       })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (!controller.signal.aborted) setError((e as Error).message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
     return () => {
+      controller.abort();
       document.title = "eatsafe — NYC Restaurant Inspection Search";
     };
   }, [storeId, passedGrocery]);

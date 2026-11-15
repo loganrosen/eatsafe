@@ -1,3 +1,9 @@
+import {
+  DataApiError,
+  fetchJson,
+  validateGeo,
+  validateZip,
+} from "./dataApi.js";
 import type { GeoParams } from "./geo.js";
 import { GRADE_ORDER } from "./gradeStyles.js";
 
@@ -6,6 +12,10 @@ export type { GeoParams } from "./geo.js";
 import { boundingBox, expandAddress, norm } from "./utils.js";
 
 const API = "https://data.cityofnewyork.us/resource/43nn-pn8j.json";
+export const RECENT_CLOSURE_DAYS = 90;
+const RECENT_QUERY_LIMIT = 5000;
+const HISTORY_CHUNK_SIZE = 100;
+const HISTORY_CONCURRENCY = 4;
 
 export interface SearchParams {
   name: string;
@@ -168,7 +178,11 @@ function recentRestaurantQuery(
   feed: RecentRestaurantFeed,
   params: { boro?: string[] } = {},
 ): URLSearchParams {
-  const conditions = [REAL_INSPECTION_DATE];
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - RECENT_CLOSURE_DAYS);
+  const conditions = [
+    `inspection_date >= '${since.toISOString().slice(0, 10)}T00:00:00.000'`,
+  ];
   if (feed === "closures") {
     conditions.push("upper(action) like '%CLOSED%'");
   }
@@ -178,32 +192,49 @@ function recentRestaurantQuery(
   return new URLSearchParams({
     $where: conditions.join(" AND "),
     $order: "inspection_date DESC",
-    $limit: "5000",
+    $limit: String(RECENT_QUERY_LIMIT),
   });
 }
 
 export async function fetchRecentRestaurants(
   feed: RecentRestaurantFeed,
-  params: { boro?: string[]; includeReopened?: boolean } = {},
-): Promise<{ rows: ApiRow[]; restaurants: Restaurant[] }> {
+  params: {
+    boro?: string[];
+    includeReopened?: boolean;
+    signal?: AbortSignal;
+  } = {},
+): Promise<{ rows: ApiRow[]; restaurants: Restaurant[]; hitLimit: boolean }> {
   const query = recentRestaurantQuery(feed, params);
-  const res = await fetch(`${API}?${query}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const closureRows: ApiRow[] = await res.json();
+  const closureRows = await fetchJson<ApiRow[]>(
+    `${API}?${query}`,
+    params.signal,
+  );
   const camises = [...new Set(closureRows.map((r) => r.camis).filter(Boolean))];
-  if (camises.length === 0) return { rows: closureRows, restaurants: [] };
+  if (camises.length === 0) {
+    return {
+      rows: closureRows,
+      restaurants: [],
+      hitLimit: closureRows.length >= RECENT_QUERY_LIMIT,
+    };
+  }
 
   const allRows: ApiRow[] = [];
-  for (let i = 0; i < camises.length; i += 25) {
-    const chunk = camises.slice(i, i + 25);
-    const historyQuery = new URLSearchParams({
-      $where: `camis in(${chunk.map((camis) => `'${camis.replace(/'/g, "''")}'`).join(",")}) AND ${REAL_INSPECTION_DATE}`,
-      $order: "inspection_date DESC",
-      $limit: "50000",
-    });
-    const historyRes = await fetch(`${API}?${historyQuery}`);
-    if (!historyRes.ok) throw new Error(`HTTP ${historyRes.status}`);
-    allRows.push(...((await historyRes.json()) as ApiRow[]));
+  const chunks: string[][] = [];
+  for (let i = 0; i < camises.length; i += HISTORY_CHUNK_SIZE) {
+    chunks.push(camises.slice(i, i + HISTORY_CHUNK_SIZE));
+  }
+  for (let i = 0; i < chunks.length; i += HISTORY_CONCURRENCY) {
+    const rowGroups = await Promise.all(
+      chunks.slice(i, i + HISTORY_CONCURRENCY).map((chunk) => {
+        const historyQuery = new URLSearchParams({
+          $where: `camis in(${chunk.map((camis) => `'${camis.replace(/'/g, "''")}'`).join(",")}) AND ${REAL_INSPECTION_DATE}`,
+          $order: "inspection_date DESC",
+          $limit: "50000",
+        });
+        return fetchJson<ApiRow[]>(`${API}?${historyQuery}`, params.signal);
+      }),
+    );
+    allRows.push(...rowGroups.flat());
   }
 
   const restaurants = groupRows(allRows)
@@ -216,7 +247,11 @@ export async function fetchRecentRestaurants(
         r.recentClosure &&
         (params.includeReopened || r.recentClosure.status === "closed"),
     );
-  return { rows: closureRows, restaurants };
+  return {
+    rows: closureRows,
+    restaurants,
+    hitLimit: closureRows.length >= RECENT_QUERY_LIMIT,
+  };
 }
 
 export async function fetchCommunityBoards(): Promise<CommunityBoard[]> {
@@ -226,13 +261,16 @@ export async function fetchCommunityBoards(): Promise<CommunityBoard[]> {
   const url =
     "https://data.cityofnewyork.us/resource/ruf7-3wgc.json" +
     "?$select=community_board_1,neighborhoods,borough&$limit=200&$order=borough,community_board_1";
-  const res = await fetch(url);
-  if (!res.ok) return [];
-  const rows: {
+  let rows: {
     community_board_1?: string;
     neighborhoods?: string;
     borough?: string;
-  }[] = await res.json();
+  }[];
+  try {
+    rows = await fetchJson(url);
+  } catch {
+    return [];
+  }
   const result = rows
     .filter((r) => r.community_board_1 && r.neighborhoods)
     .map((r) => ({
@@ -251,9 +289,12 @@ export async function fetchCuisines(): Promise<string[]> {
   const url =
     "https://data.cityofnewyork.us/resource/43nn-pn8j.json" +
     "?$select=cuisine_description&$group=cuisine_description&$order=cuisine_description&$limit=500";
-  const res = await fetch(url);
-  if (!res.ok) return [];
-  const rows: { cuisine_description?: string }[] = await res.json();
+  let rows: { cuisine_description?: string }[];
+  try {
+    rows = await fetchJson(url);
+  } catch {
+    return [];
+  }
   const result = rows.map((r) => r.cuisine_description ?? "").filter(Boolean);
   sessionStorage.setItem(CACHE_KEY, JSON.stringify(result));
   return result;
@@ -262,7 +303,10 @@ export async function fetchCuisines(): Promise<string[]> {
 export async function searchRestaurants(
   params: SearchParams,
   geo?: GeoParams,
+  signal?: AbortSignal,
 ): Promise<{ rows: ApiRow[]; geo?: GeoParams }> {
+  validateZip(params.zip);
+  validateGeo(geo);
   const conditions: string[] = [];
   if (params.name) {
     // Match each token at a word boundary (start of name or after a space)
@@ -319,21 +363,23 @@ export async function searchRestaurants(
     $limit: "5000",
   });
 
-  const res = await fetch(`${API}?${query}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const rows: ApiRow[] = await res.json();
+  const rows = await fetchJson<ApiRow[]>(`${API}?${query}`, signal);
   return { rows, geo };
 }
 
-export async function fetchByCamis(camis: string): Promise<Restaurant | null> {
+export async function fetchByCamis(
+  camis: string,
+  signal?: AbortSignal,
+): Promise<Restaurant | null> {
+  if (!/^\d+$/.test(camis)) {
+    throw new DataApiError("Restaurant ID is invalid.", "invalid-input");
+  }
   const query = new URLSearchParams({
     $where: `camis='${camis.replace(/'/g, "''")}'`,
     $order: "inspection_date DESC",
     $limit: "1000",
   });
-  const res = await fetch(`${API}?${query}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const rows: ApiRow[] = await res.json();
+  const rows = await fetchJson<ApiRow[]>(`${API}?${query}`, signal);
   if (!rows.length) return null;
   return groupRows(rows)[0] ?? null;
 }

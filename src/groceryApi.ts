@@ -1,3 +1,9 @@
+import {
+  DataApiError,
+  fetchJson,
+  validateGeo,
+  validateZip,
+} from "./dataApi.js";
 import type { GeoParams } from "./geo.js";
 
 export type { GeoParams } from "./geo.js";
@@ -148,7 +154,10 @@ export function parseStoreId(id: string): {
 export async function searchGroceries(
   params: GrocerySearchParams,
   geo?: GeoParams,
+  signal?: AbortSignal,
 ): Promise<{ rows: GroceryApiRow[]; geo?: GeoParams }> {
+  validateZip(params.zip);
+  validateGeo(geo);
   const conditions: string[] = [];
 
   // Always filter to NYC counties and establishment type containing 'A' (Store)
@@ -199,14 +208,25 @@ export async function searchGroceries(
     $limit: "5000",
   });
 
-  const res = await fetch(`${API}?${query}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const rows: GroceryApiRow[] = await res.json();
+  const rows = await fetchJson<GroceryApiRow[]>(`${API}?${query}`, signal);
   return { rows, geo };
 }
 
-export async function fetchGroceryById(id: string): Promise<Grocery | null> {
-  const { tradeName, street, zipcode } = parseStoreId(id);
+export async function fetchGroceryById(
+  id: string,
+  signal?: AbortSignal,
+): Promise<Grocery | null> {
+  let parsed: ReturnType<typeof parseStoreId>;
+  try {
+    parsed = parseStoreId(id);
+  } catch {
+    throw new DataApiError("Store ID is invalid.", "invalid-input");
+  }
+  const { tradeName, street, zipcode } = parsed;
+  if (!tradeName || !street) {
+    throw new DataApiError("Store ID is invalid.", "invalid-input");
+  }
+  validateZip(zipcode);
   const conditions = [
     `upper(trade_name)='${norm(tradeName).replace(/'/g, "''")}'`,
     `upper(street)='${norm(street).replace(/'/g, "''")}'`,
@@ -219,9 +239,7 @@ export async function fetchGroceryById(id: string): Promise<Grocery | null> {
     $limit: "1000",
   });
 
-  const res = await fetch(`${API}?${query}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const rows: GroceryApiRow[] = await res.json();
+  const rows = await fetchJson<GroceryApiRow[]>(`${API}?${query}`, signal);
   if (!rows.length) return null;
   return groupGroceryRows(rows)[0] ?? null;
 }
