@@ -5,6 +5,7 @@ import App from "./App.js";
 import ErrorBoundary from "./components/ErrorBoundary.js";
 import GroceryPage from "./pages/GroceryPage.js";
 import RestaurantPage from "./pages/RestaurantPage.js";
+import { syncAlerts } from "./pushAlerts.js";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -20,3 +21,5 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     </ErrorBoundary>
   </React.StrictMode>,
 );
+
+syncAlerts();
