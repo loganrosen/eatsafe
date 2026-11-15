@@ -3,6 +3,7 @@ import type { DatasetMode } from "../App.js";
 import type { RecentRestaurantFeed, Restaurant } from "../api.js";
 import type { Grocery } from "../groceryApi.js";
 import { recentRestaurantTimestamp } from "../recentRestaurants.js";
+import FollowingList from "./FollowingList.js";
 import GroceryCard from "./GroceryCard.js";
 import MapView from "./MapView.js";
 import RestaurantCard from "./RestaurantCard.js";
@@ -115,14 +116,17 @@ export default function ResultsGrid({
 
   if (status === "idle")
     return (
-      <div className="py-32 text-center font-mono text-sm text-zinc-500 tracking-widest dark:text-zinc-600">
-        <div className="font-display text-8xl text-zinc-300 mb-4 leading-none dark:text-zinc-800">
-          EAT
+      <>
+        {!isGrocery && !recentFeed && <FollowingList />}
+        <div className="py-32 text-center font-mono text-sm text-zinc-500 tracking-widest dark:text-zinc-600">
+          <div className="font-display text-8xl text-zinc-300 mb-4 leading-none dark:text-zinc-800">
+            EAT
+          </div>
+          {isGrocery
+            ? "ENTER A STORE NAME, ADDRESS, OR BOROUGH TO BEGIN"
+            : "ENTER A RESTAURANT NAME, ADDRESS, OR BOROUGH TO BEGIN"}
         </div>
-        {isGrocery
-          ? "ENTER A STORE NAME, ADDRESS, OR BOROUGH TO BEGIN"
-          : "ENTER A RESTAURANT NAME, ADDRESS, OR BOROUGH TO BEGIN"}
-      </div>
+      </>
     );
   if (status === "loading")
     return (

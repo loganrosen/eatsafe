@@ -9,6 +9,10 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      workbox: {
+        importScripts: ["/push-sw.js"],
+        navigateFallbackDenylist: [/^\/api\//],
+      },
       manifest: {
         name: "eatsafe",
         short_name: "eatsafe",

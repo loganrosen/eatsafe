@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import type { Inspection, Restaurant } from "../api.js";
 import { fetchByCamis } from "../api.js";
+import { AlertsPanel, FollowButton } from "../components/FollowButton.js";
 import GradeBadge from "../components/GradeBadge.js";
 import GradeTimeline from "../components/GradeTimeline.js";
 import MiniMap from "../components/MiniMap.js";
 import ViolationList from "../components/ViolationList.js";
+import { useFollows } from "../follows.js";
 import { GRADE_LABEL, GRADE_TEXT, gradeForScore } from "../gradeStyles.js";
 import {
   fmtDate,
@@ -138,6 +140,7 @@ export default function RestaurantPage() {
   const [loading, setLoading] = useState(!passedRestaurant);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const follows = useFollows();
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -304,6 +307,7 @@ export default function RestaurantPage() {
                   )}
                 </a>
               )}
+              <FollowButton camis={restaurant.camis} dba={restaurant.dba} />
               <button
                 type="button"
                 onClick={() => {
@@ -316,6 +320,10 @@ export default function RestaurantPage() {
                 {copied ? "✓ Copied" : "Copy link"}
               </button>
             </div>
+
+            {follows.some((f) => f.camis === restaurant.camis) && (
+              <AlertsPanel />
+            )}
 
             {/* Mini map */}
             {restaurant.lat && restaurant.lng && (
