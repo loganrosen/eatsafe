@@ -151,6 +151,23 @@ export async function enableAlerts(): Promise<void> {
   }
 }
 
+const PROMPTED_KEY = "eatsafe:alertsPrompted";
+
+/** Prompts on the first Follow only; returns true if it took over syncing follows. */
+export function offerAlertsOnFollow(): boolean {
+  if (state.status !== "off" || Notification.permission !== "default") {
+    return false;
+  }
+  try {
+    if (localStorage.getItem(PROMPTED_KEY)) return false;
+    localStorage.setItem(PROMPTED_KEY, "1");
+  } catch {
+    return false;
+  }
+  void enableAlerts();
+  return true;
+}
+
 export async function disableAlerts(): Promise<void> {
   setState({ busy: true, error: null });
   try {

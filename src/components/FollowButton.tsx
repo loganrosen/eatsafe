@@ -7,6 +7,7 @@ import {
 import {
   disableAlerts,
   enableAlerts,
+  offerAlertsOnFollow,
   syncAlerts,
   useAlerts,
 } from "../pushAlerts.js";
@@ -34,9 +35,13 @@ export function FollowButton({ camis, dba }: { camis: string; dba: string }) {
       }
       aria-pressed={following}
       onClick={() => {
-        if (following) unfollowRestaurant(camis);
-        else followRestaurant(camis, dba);
-        syncAlerts();
+        if (following) {
+          unfollowRestaurant(camis);
+          syncAlerts();
+        } else {
+          followRestaurant(camis, dba);
+          if (!offerAlertsOnFollow()) syncAlerts();
+        }
       }}
       className={linkCls}
     >
